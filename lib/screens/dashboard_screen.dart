@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/percent_indicator.dart';
+import 'package:intl/intl.dart';
 import '../services/screen_time_service.dart';
+import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
+import '../models/user_model.dart';
+import '../models/assessment_model.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -12,21 +17,33 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final ScreenTimeService _screenTimeService = ScreenTimeService();
+  final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService();
+
   Duration _screenTime = Duration.zero;
   bool _isLoading = true;
+  UserModel? _userModel;
+  AssessmentModel? _lastAssessment;
 
   @override
   void initState() {
     super.initState();
-    _fetchScreenTime();
+    _fetchData();
   }
 
-  Future<void> _fetchScreenTime() async {
+  Future<void> _fetchData() async {
     Duration time = await _screenTimeService.getDailyScreenTime();
-    setState(() {
-      _screenTime = time;
-      _isLoading = false;
-    });
+    UserModel? user = await _firestoreService.getUserProfile();
+    AssessmentModel? assessment = await _firestoreService.getLastAssessment();
+
+    if (mounted) {
+      setState(() {
+        _screenTime = time;
+        _userModel = user;
+        _lastAssessment = assessment;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -73,7 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Hello, Alex',
+              _isLoading ? 'Hello...' : 'Hello, ${_userModel?.firstName ?? 'User'}',
               style: GoogleFonts.inter(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -136,7 +153,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.circle, color: Colors.orange, size: 12),
+                    Icon(
+                      Icons.circle,
+                      color: _lastAssessment?.riskLevel == 'High'
+                          ? Colors.red
+                          : (_lastAssessment?.riskLevel == 'Moderate' ? Colors.orange : Colors.green),
+                      size: 12,
+                    ),
                     const SizedBox(width: 8),
                     RichText(
                       text: TextSpan(
@@ -144,9 +167,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         children: [
                           const TextSpan(text: 'Risk Level: '),
                           TextSpan(
-                            text: 'Moderate',
+                            text: _lastAssessment != null ? _lastAssessment!.riskLevel : 'Unknown',
                             style: GoogleFonts.inter(
-                              color: Colors.orange,
+                              color: _lastAssessment?.riskLevel == 'High'
+                                  ? Colors.red
+                                  : (_lastAssessment?.riskLevel == 'Moderate' ? Colors.orange : Colors.green),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -190,105 +215,108 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 24),
 
             // Last Test Result
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E2636),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey[800]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Last Test Result',
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.green),
-                        ),
-                        child: Text(
-                          'Passed',
+            if (_lastAssessment != null)
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E2636),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey[800]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Last Test Result',
                           style: GoogleFonts.inter(
-                            color: Colors.green,
-                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[800],
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.assignment_turned_in,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '20/20',
-                            style: GoogleFonts.inter(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
                           ),
-                          Text(
-                            'Vision Score: 95/100',
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2F80ED).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFF2F80ED)),
+                          ),
+                          child: Text(
+                            'Completed',
                             style: GoogleFonts.inter(
-                              color: Colors.grey[400],
+                              color: const Color(0xFF2F80ED),
                               fontSize: 12,
                             ),
                           ),
-                        ],
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Oct 24, 2023',
-                        style: GoogleFonts.inter(
-                          color: Colors.grey,
-                          fontSize: 12,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  LinearProgressIndicator(
-                    value: 0.95,
-                    backgroundColor: Colors.grey[800],
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.green,
+                      ],
                     ),
-                    minHeight: 6,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.assignment_turned_in,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_lastAssessment!.riskScore}/100',
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Risk Score',
+                              style: GoogleFonts.inter(
+                                color: Colors.grey[400],
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Text(
+                          DateFormat.yMMMd().format(_lastAssessment!.date),
+                          style: GoogleFonts.inter(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: _lastAssessment!.riskScore / 100,
+                      backgroundColor: Colors.grey[800],
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        _lastAssessment!.riskLevel == 'High'
+                            ? Colors.red
+                            : (_lastAssessment!.riskLevel == 'Moderate' ? Colors.orange : Colors.green),
+                      ),
+                      minHeight: 6,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ],
+                ),
               ),
-            ),
             const SizedBox(height: 24),
 
             // Tip of the day
@@ -331,8 +359,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 32),
             Center(
               child: TextButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
+                onPressed: () async {
+                  await _authService.signOut();
+                  // AuthWrapper will handle navigation automatically
                 },
                 icon: const Icon(Icons.logout, color: Colors.grey),
                 label: Text(

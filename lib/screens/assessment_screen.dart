@@ -39,12 +39,29 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null) {
       if (!mounted) return;
-      Navigator.pushNamed(context, '/result', arguments: File(photo.path));
+      _proceed(File(photo.path));
     }
   }
 
   void _proceedWithoutImage() {
-    Navigator.pushNamed(context, '/result', arguments: null);
+    _proceed(null);
+  }
+
+  void _proceed(File? image) {
+    List<String> selectedSymptoms = _symptoms
+        .where((s) => s.isSelected)
+        .map((s) => s.name)
+        .toList();
+    
+    Navigator.pushNamed(
+      context, 
+      '/result', 
+      arguments: {
+        'image': image,
+        'symptoms': selectedSymptoms,
+        'painLevel': _painLevel.round(),
+      },
+    );
   }
 
   @override

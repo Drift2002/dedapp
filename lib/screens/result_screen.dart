@@ -4,11 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
 import '../services/roboflow_service.dart';
+import '../services/firestore_service.dart';
+import '../models/assessment_model.dart';
 
 class ResultScreen extends StatefulWidget {
   final File? image;
+  final List<String> symptoms;
+  final int painLevel;
 
-  const ResultScreen({super.key, this.image});
+  const ResultScreen({
+    super.key, 
+    this.image,
+    required this.symptoms,
+    required this.painLevel,
+  });
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -16,12 +25,68 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   final RoboflowService _roboflowService = RoboflowService();
+  final FirestoreService _firestoreService = FirestoreService();
   late Future<AnalysisResult> _analysisFuture;
+  List<AssessmentModel> _pastAssessments = [];
 
   @override
   void initState() {
     super.initState();
-    _analysisFuture = _roboflowService.analyzeImage(widget.image ?? File(''));
+    _analysisFuture = _processAssessment();
+    _loadPastAssessments();
+  }
+
+  Future<void> _loadPastAssessments() async {
+    _firestoreService.getAssessments().listen((data) {
+      if (mounted) {
+        setState(() {
+          _pastAssessments = data;
+        });
+      }
+    });
+  }
+
+  Future<AnalysisResult> _processAssessment() async {
+    AnalysisResult aiResult;
+    if (widget.image != null) {
+      aiResult = await _roboflowService.analyzeImage(widget.image!);
+    } else {
+      // Formulate a mock result based on symptoms when no image is available
+      aiResult = AnalysisResult(
+        riskScore: widget.painLevel * 10, 
+        riskLevel: widget.painLevel > 6 ? 'High' : (widget.painLevel > 3 ? 'Moderate' : 'Low'),
+        detectedSymptoms: widget.symptoms,
+        riskHistory: [],
+      );
+    }
+    
+    // Combine symptom data to adjust risk score broadly
+    int finalRiskScore = aiResult.riskScore + (widget.symptoms.length * 5);
+    if (finalRiskScore > 100) finalRiskScore = 100;
+    
+    String finalRiskLevel = 'Unknown';
+    if (finalRiskScore < 30) finalRiskLevel = 'Low';
+    else if (finalRiskScore < 70) finalRiskLevel = 'Moderate';
+    else finalRiskLevel = 'High';
+
+    AnalysisResult finalResult = AnalysisResult(
+      riskScore: finalRiskScore,
+      riskLevel: finalRiskLevel,
+      detectedSymptoms: aiResult.detectedSymptoms,
+      riskHistory: aiResult.riskHistory,
+    );
+
+    // Save Assessment
+    final model = AssessmentModel(
+      date: DateTime.now(),
+      symptoms: widget.symptoms,
+      painLevel: widget.painLevel,
+      riskScore: finalRiskScore,
+      riskLevel: finalRiskLevel,
+    );
+    await _firestoreService.addAssessmentResult(model);
+
+    return finalResult;
   }
 
   @override
@@ -172,20 +237,18 @@ class _ResultScreenState extends State<ResultScreen> {
                             titlesData: FlTitlesData(show: false),
                             borderData: FlBorderData(show: false),
                             minX: 0,
-                            maxX: 6,
+                            maxX: (_pastAssessments.length > 0 ? _pastAssessments.length - 1 : 1).toDouble(),
                             minY: 0,
-                            maxY: 50,
+                            maxY: 100,
                             lineBarsData: [
                               LineChartBarData(
-                                spots: const [
-                                  FlSpot(0, 10),
-                                  FlSpot(1, 25),
-                                  FlSpot(2, 20),
-                                  FlSpot(3, 30),
-                                  FlSpot(4, 15),
-                                  FlSpot(5, 40),
-                                  FlSpot(6, 30),
-                                ],
+                                spots: _pastAssessments.isEmpty 
+                                  ? const [FlSpot(0, 0)] 
+                                  : List.generate(_pastAssessments.length, (index) {
+                                    // Plotting older at left (index 0) to newest at right (last index)
+                                    final revIndex = _pastAssessments.length - 1 - index;
+                                    return FlSpot(index.toDouble(), _pastAssessments[revIndex].riskScore.toDouble());
+                                  }),
                                 isCurved: true,
                                 color: const Color(0xFF2F80ED),
                                 barWidth: 3,

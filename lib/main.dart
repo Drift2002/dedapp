@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/login_screen.dart';
+import 'screens/signup_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/assessment_screen.dart';
 import 'screens/result_screen.dart';
@@ -42,20 +43,54 @@ class OcularCareApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      initialRoute: '/',
+      home: const AuthWrapper(),
       routes: {
-        '/': (context) => const LoginScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/signup': (context) => const SignupScreen(),
         '/dashboard': (context) => const DashboardScreen(),
         '/assessment': (context) => const AssessmentScreen(),
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/result') {
-          final args = settings.arguments as File?;
+          final args = settings.arguments as Map<String, dynamic>? ?? {};
           return MaterialPageRoute(
-            builder: (context) => ResultScreen(image: args),
+            builder: (context) => ResultScreen(
+              image: args['image'],
+              symptoms: args['symptoms'] ?? [],
+              painLevel: args['painLevel'] ?? 0,
+            ),
           );
         }
         return null;
+      },
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Color(0xFF10141D),
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return const Scaffold(
+            body: Center(child: Text("Something went wrong")),
+          );
+        }
+        if (snapshot.hasData) {
+          return const DashboardScreen();
+        } else {
+          return const LoginScreen();
+        }
       },
     );
   }
