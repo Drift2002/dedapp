@@ -361,7 +361,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: TextButton.icon(
                 onPressed: () async {
                   await _authService.signOut();
-                  // AuthWrapper will handle navigation automatically
+                  if (context.mounted) {
+                    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+                  }
                 },
                 icon: const Icon(Icons.logout, color: Colors.grey),
                 label: Text(
